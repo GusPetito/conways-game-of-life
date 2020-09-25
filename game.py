@@ -1,5 +1,7 @@
 import pygame as pg
 import numpy as np
+from enum import Enum
+import itertools
 
 # make constants
 # size of each square in pixels
@@ -12,13 +14,17 @@ line_color = (100, 100, 100)
 # in milliseconds
 tick_time = 500
 
+# the mode we're currently in, whether we're placing or watching it go
+Mode = Enum('Mode', 'place simulate')
+curr_mode = Mode.place
+
 # create the box array. each element will be a true or false, depending on if it has a square
 boxes = np.zeros(shape=(width, height)).astype(np.bool)
+boxes_orig = boxes.copy()
 
 # returns a grid surface, with the squares colored in appropriately
 def create_grid():
     grid = pg.Surface(screen_dimensions)
-    print(boxes)
     for index, box in np.ndenumerate(boxes):
         if box:
             box_rect = pg.Rect((index[0] * box_size, index[1] * box_size), (box_size,)*2)
@@ -32,12 +38,31 @@ def create_grid():
     return grid
 
 
+# returns the amount of neighbors for a given grid
+def get_neighbors(x, y):
+    neighbor_sum = 0
+    offset_list = {-1, 0, 1}
+    for (x_offset, y_offset) in itertools.product(offset_list, offset_list):
+        new_x = x + x_offset
+        new_y = y + y_offset
+        if not (x_offset == 0 and y_offset == 0) and new_x < width and new_y < height and boxes[new_x, new_y]:
+            neighbor_sum += 1
+    return neighbor_sum
+
 # set up PyGame
 pg.init()
 
 # game loop
 needs_to_update = True
 while True:
+    # update boxes
+    if curr_mode == Mode.simulate and needs_to_update:
+        neighbors = np.zeros((width, height))
+        for index, box in np.ndenumerate(boxes):
+            neighbor_count = get_neighbors(*index)
+            neighbors[index] = neighbor_count == 3 or (neighbor_count == 2 and boxes[index])
+        boxes = neighbors.copy()
+
     if needs_to_update:
         screen.fill(0)
         grid = create_grid()
@@ -53,10 +78,24 @@ while True:
         if event.type == pg.QUIT:
             pg.quit()
             exit(0)
+        # check if the user is changing modes or quitting
+        if event.type == pg.KEYDOWN:
+            if event.key == pg.K_q:
+                pg.quit()
+                exit(0)
+            if event.key == pg.K_p:
+                curr_mode = Mode.place
+                boxes = boxes_orig.copy()
+                needs_to_update = True
+            elif event.key == pg.K_s:
+                curr_mode = Mode.simulate
+                boxes = boxes_orig.copy()
+                needs_to_update = True
         # check if user clicked in box
-        if event.type == pg.MOUSEBUTTONDOWN:
+        if curr_mode == Mode.place and event.type == pg.MOUSEBUTTONDOWN:
             x, y = event.pos
             x_coord = int(x / box_size)
             y_coord = int(y / box_size)
-            needs_to_update = True
             boxes[x_coord, y_coord] = not boxes[x_coord, y_coord]
+            boxes_orig[x_coord, y_coord] = not boxes_orig[x_coord, y_coord]
+            needs_to_update = True
